@@ -1,0 +1,91 @@
+﻿@page "/fetchdata"
+
+@using RedisTest.Data
+@using RedisTest.Utils
+@inject WeatherForecastService ForecastService
+@inject Microsoft.Extensions.Caching.Distributed.IDistributedCache cache
+
+<h1>Weather forecast</h1>
+
+<p>This component demonstrates fetching data from a service.</p>
+
+<button class="btn btn-primary" @onclick="LoadForecast">Load Forecast</button>
+
+@if (forecasts is null && loadLocation == "")
+{
+    <p><em>Click the btn to load the forecast</em></p>
+}
+else if (forecasts == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="h3 @isCacheData">@loadLocation</div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Temp. (C)</th>
+                <th>Temp. (F)</th>
+                <th>Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var forecast in forecasts)
+            {
+                <tr>
+                    <td>@forecast.Date.ToShortDateString()</td>
+                    <td>@forecast.TemperatureC</td>
+                    <td>@forecast.TemperatureF</td>
+                    <td>@forecast.Summary</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private WeatherForecast[] forecasts; // 모델 자료를 받을 배열
+    private string loadLocation = ""; // api에서 받았는지 cache에서 받았는지 표시
+    private string isCacheData = ""; // cache에서 받앗는지에 따라 text 속성을 danger로 표시하기 위한 변수
+    // 페이지를 맨 처음에 진입했을때 변수 상태.
+
+    // btn click에 할당한 메서드
+    private async Task LoadForecast()
+    {
+        forecasts = null; // btn을 눌렀을때 "" 에서 null 이 된다. 즉 로딩을 눌렀지만 데이터가 아직 로딩중인 상태를 의미
+        loadLocation = null;
+
+        // redis에서 찾을 key
+        string recordKey = "WF_" + DateTime.Now.ToString("yyyMMdd_hhmm");
+
+        // 일단 redis에서 찾아봄
+        forecasts = await cache.GetRecordAsync<WeatherForecast[]>(recordKey);
+
+        // redis에 없으면, 즉 cache에 없으면,
+        if (forecasts is null)
+        {
+            // API 호출로 정보 받아옴
+            forecasts = await ForecastService.GetForecastAsync(DateTime.Now);
+
+            loadLocation = $"Loaded from API at { DateTime.Now }";
+            isCacheData = "";
+
+            // cache가 없었으니까 받아온 정보를 cache에 저장
+            await cache.SetRecordAsync(recordKey, forecasts);
+        }
+        else
+        {
+            loadLocation = $"Loaded from the cache at { DateTime.Now }";
+            isCacheData = "text-danger";
+        }
+    }
+
+
+    //protected override async Task OnInitializedAsync()
+    //{
+    //    forecasts = await ForecastService.GetForecastAsync(DateTime.Now);
+    //}
+}
